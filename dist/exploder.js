@@ -80,6 +80,16 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	var gifCache = new Map();
 
+	function base64ToArrayBuffer(base64) {
+	  var binary_string = window.atob(base64);
+	  var len = binary_string.length;
+	  var bytes = new Uint8Array(len);
+	  for (var i = 0; i < len; i++) {
+	    bytes[i] = binary_string.charCodeAt(i);
+	  }
+	  return bytes.buffer;
+	}
+
 	var Exploder = function () {
 	  function Exploder(file) {
 	    _classCallCheck(this, Exploder);
@@ -94,6 +104,12 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	      var cachedGifPromise = gifCache.get(this.file);
 	      if (cachedGifPromise) return cachedGifPromise;
+
+	      // If it's a base64 GIF, just process it
+	      if (this.file.startsWith('data:image/gif;base64,')) {
+	        var base64File = this.file.replace('data:image/gif;base64,', '');
+	        return this.explode(base64ToArrayBuffer(base64File));
+	      }
 
 	      var gifPromise = _utils.Promises.xhrGet(this.file, '*/*', 'arraybuffer').then(function (buffer) {
 	        return _this.explode(buffer);
@@ -158,61 +174,61 @@ return /******/ (function(modules) { // webpackBootstrap
 	            }
 	            streamReader.skipBytes(1); //NULL terminator
 	          } else if (streamReader.isNext([0x2c])) {
-	              streamReader.log("IMAGE DESCRIPTOR!");
-	              if (!expectingImage) {
-	                // This is a bare image, not prefaced with a Graphics Control Extension
-	                // so we should treat it as a frame.
-	                frames.push({ index: streamReader.index, delay: 0 });
-	              }
-	              expectingImage = false;
+	            streamReader.log("IMAGE DESCRIPTOR!");
+	            if (!expectingImage) {
+	              // This is a bare image, not prefaced with a Graphics Control Extension
+	              // so we should treat it as a frame.
+	              frames.push({ index: streamReader.index, delay: 0 });
+	            }
+	            expectingImage = false;
 
-	              streamReader.skipBytes(9);
-	              if (streamReader.peekBit(1)) {
-	                streamReader.log("LOCAL COLOR TABLE");
-	                var colorTableSize = streamReader.readByte() & 0x07;
-	                streamReader.log("LOCAL COLOR TABLE IS " + 3 * Math.pow(2, colorTableSize + 1) + " BYTES");
-	                streamReader.skipBytes(3 * Math.pow(2, colorTableSize + 1));
-	              } else {
-	                streamReader.log("NO LOCAL TABLE PHEW");
-	                streamReader.skipBytes(1);
-	              }
+	            streamReader.skipBytes(9);
+	            if (streamReader.peekBit(1)) {
+	              streamReader.log("LOCAL COLOR TABLE");
+	              var colorTableSize = streamReader.readByte() & 0x07;
+	              streamReader.log("LOCAL COLOR TABLE IS " + 3 * Math.pow(2, colorTableSize + 1) + " BYTES");
+	              streamReader.skipBytes(3 * Math.pow(2, colorTableSize + 1));
+	            } else {
+	              streamReader.log("NO LOCAL TABLE PHEW");
+	              streamReader.skipBytes(1);
+	            }
 
-	              streamReader.log("MIN CODE SIZE " + streamReader.readByte());
-	              streamReader.log("DATA START");
+	            streamReader.log("MIN CODE SIZE " + streamReader.readByte());
+	            streamReader.log("DATA START");
 
-	              while (!streamReader.isNext([0x00])) {
-	                var blockSize = streamReader.readByte();
-	                //        streamReader.log("SKIPPING " + blockSize + " BYTES");
-	                streamReader.skipBytes(blockSize);
-	              }
-	              streamReader.log("DATA END");
-	              streamReader.skipBytes(1); //NULL terminator
-	            } else if (streamReader.isNext([0x21, 0xF9, 0x04])) {
-	                streamReader.log("GRAPHICS CONTROL EXTENSION!");
-	                // We _definitely_ have a frame. Now we're expecting an image
-	                var index = streamReader.index;
+	            while (!streamReader.isNext([0x00])) {
+	              var blockSize = streamReader.readByte();
+	              //        streamReader.log("SKIPPING " + blockSize + " BYTES");
+	              streamReader.skipBytes(blockSize);
+	            }
+	            streamReader.log("DATA END");
+	            streamReader.skipBytes(1); //NULL terminator
+	          } else if (streamReader.isNext([0x21, 0xF9, 0x04])) {
+	            streamReader.log("GRAPHICS CONTROL EXTENSION!");
+	            // We _definitely_ have a frame. Now we're expecting an image
+	            var index = streamReader.index;
 
-	                streamReader.skipBytes(3);
-	                var disposalMethod = streamReader.readByte() >> 2;
-	                streamReader.log("DISPOSAL " + disposalMethod);
-	                var delay = streamReader.readByte() + streamReader.readByte() * 256;
-	                frames.push({ index: index, delay: delay, disposal: disposalMethod });
-	                streamReader.log("FRAME DELAY " + delay);
-	                streamReader.skipBytes(2);
-	                expectingImage = true;
-	              } else {
-	                var maybeTheEnd = streamReader.index;
-	                while (!streamReader.finished() && !streamReader.isNext([0x21, 0xF9, 0x04])) {
-	                  streamReader.readByte();
-	                }
-	                if (streamReader.finished()) {
-	                  streamReader.index = maybeTheEnd;
-	                  streamReader.log("WE END");
-	                  spinning = false;
-	                } else {
-	                  streamReader.log("UNKNOWN DATA FROM " + maybeTheEnd);
-	                }
-	              }
+	            streamReader.skipBytes(3);
+	            var disposalMethod = streamReader.readByte() >> 2;
+	            streamReader.log("DISPOSAL " + disposalMethod);
+	            var delay = streamReader.readByte() + streamReader.readByte() * 256;
+	            frames.push({ index: index, delay: delay, disposal: disposalMethod });
+	            streamReader.log("FRAME DELAY " + delay);
+	            streamReader.skipBytes(2);
+	            expectingImage = true;
+	          } else {
+	            var maybeTheEnd = streamReader.index;
+	            while (!streamReader.finished() && !streamReader.isNext([0x21, 0xF9, 0x04])) {
+	              streamReader.readByte();
+	            }
+	            if (streamReader.finished()) {
+	              streamReader.index = maybeTheEnd;
+	              streamReader.log("WE END");
+	              spinning = false;
+	            } else {
+	              streamReader.log("UNKNOWN DATA FROM " + maybeTheEnd);
+	            }
+	          }
 	        }
 	        var endOfFrames = streamReader.index;
 
