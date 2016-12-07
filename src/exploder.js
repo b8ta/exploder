@@ -7,6 +7,17 @@ import { Promises } from './utils.js';
 var url = (URL && URL.createObjectURL) ? URL : webkitURL;
 
 var gifCache = new Map();
+
+function base64ToArrayBuffer(base64) {
+    var binary_string =  window.atob(base64);
+    var len = binary_string.length;
+    var bytes = new Uint8Array( len );
+    for (var i = 0; i < len; i++)        {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
 export default class Exploder {
   constructor(file) {
     this.file = file;
@@ -15,6 +26,12 @@ export default class Exploder {
   load() {
     var cachedGifPromise = gifCache.get(this.file)
     if (cachedGifPromise) return cachedGifPromise;
+
+    // If it's a base64 GIF, just process it
+    if (this.file.startsWith('data:image/gif;base64,')) {
+      const base64File = this.file.replace('data:image/gif;base64,', '');
+      return this.explode(base64ToArrayBuffer(base64File));
+    }
 
     var gifPromise = Promises.xhrGet(this.file, '*/*', 'arraybuffer')
       .then(buffer => this.explode(buffer));
